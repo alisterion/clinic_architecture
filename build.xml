@@ -1,0 +1,206 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project name="clinicapp" default="build">
+    <property name="toolsdir" value=""/>
+
+    <property environment="env"/>
+    <condition property="work.dir" value="${env.WORKSPACE}" else="${basedir}">
+        <isset property="env.WORKSPACE" />
+    </condition>
+    <property name="project.name" value="clinicapp" />
+    <property name="venv.name" value=".venv_${project.name}" />
+    <property name="venv.path" value="${work.dir}/build/${venv.name}" />
+    <property name="python.bin" value="${venv.path}/bin/python" />
+    <property name="pip.bin" value="${venv.path}/bin/pip" />
+    <property name="coverage.bin" value="${venv.path}/bin/coverage" />
+    <property name="report.dir" value="${work.dir}/build/report" />
+
+    <target name="virtualenv">
+        <exec executable="/usr/bin/virtualenv" failonerror="true" taskname="virtualenv">
+            <arg line="-p /usr/bin/python3.4 ${venv.path}" />
+        </exec>
+    </target>
+
+    <!-- ===================== pip ===================== -->
+    <target name="pip_update" depends="virtualenv">
+        <exec executable="${pip.bin}" failonerror="false" taskname="pip.update.self">
+            <arg line="install -U pip setuptools" />
+        </exec>
+    </target>
+    <target name="pip_tools" depends="virtualenv,pip_update">
+        <exec executable="${pip.bin}" failonerror="true" taskname="pip.tools.install">
+            <arg line="install prospector coverage unittest-xml-reporting pep8" />
+        </exec>
+    </target>
+    <target name="pip_requirements" depends="virtualenv,pip_update">
+        <exec executable="${pip.bin}" failonerror="true" taskname="pip.requirements.install">
+            <arg line="install -r ${work.dir}/requirements.txt" />
+        </exec>
+    </target>
+    <target name="pip" 
+            depends="virtualenv,pip_update,pip_tools,pip_requirements" />
+
+    <!-- ===================== static analyse tools ===================== -->
+    <target name="pep8">
+        <exec executable="${venv.path}/bin/pep8" failonerror="false" taskname="pep8" output="${report.dir}/pep8.report">
+            <arg value="--repeat" />
+            <arg value="./${project.name}" />
+        </exec>
+    </target>
+    <target name="prospector">
+        <property name="pylint.rc" value="${work.dir}/pylint.rc" />
+        <echo file="${pylint.rc}">
+[MASTER]
+profile=no
+ignore=CVS
+persistent=yes
+load-plugins=
+[MESSAGES CONTROL]
+disable=F0401,R0201
+[REPORTS]
+output-format=parseable
+files-output=no
+reports=yes
+evaluation=10.0 - ((float(5 * error + warning + refactor + convention) / statement) * 10)
+comment=no
+[FORMAT]
+max-line-length=80
+max-module-lines=1000
+indent-string='    '
+[VARIABLES]
+init-import=yes
+dummy-variables-rgx=_|dummy
+additional-builtins=
+[SIMILARITIES]
+min-similarity-lines=4
+ignore-comments=yes
+ignore-docstrings=yes
+[TYPECHECK]
+ignore-mixin-members=yes
+ignored-classes=SQLObject
+zope=yes
+generated-members=REQUEST,acl_users,aq_parent
+[MISCELLANEOUS]
+notes=FIXME,XXX,TODO
+[BASIC]
+required-attributes=
+bad-functions=map,filter,apply,input
+module-rgx=(([a-z_][a-z0-9_]*)|([A-Z][a-zA-Z0-9]+))$
+const-rgx=(([A-Z_][A-Z0-9_]*)|(__.*__))$
+class-rgx=[A-Z_][a-zA-Z0-9]+$
+function-rgx=[a-z_][a-z0-9_]{2,30}$
+method-rgx=[a-z_][a-z0-9_]{2,30}$
+attr-rgx=[a-z_][a-z0-9_]{2,30}$
+argument-rgx=[a-z_][a-z0-9_]{2,30}$
+variable-rgx=[a-z_][a-z0-9_]{2,30}$
+inlinevar-rgx=[A-Za-z_][A-Za-z0-9_]*$
+good-names=app,uwsgi,e,i,j,k,ex,Run,_
+bad-names=foo,bar,baz,toto,tutu,tata
+no-docstring-rgx=__.*__|[Tt]est.*
+[DESIGN]
+max-args=5
+ignored-argument-names=_.*
+max-locals=15
+max-returns=6
+max-branchs=12
+max-statements=50
+max-parents=7
+max-attributes=7
+min-public-methods=0
+max-public-methods=20
+[IMPORTS]
+deprecated-modules=regsub,string,TERMIOS,Bastion,rexec
+import-graph=
+ext-import-graph=
+int-import-graph=
+[CLASSES]
+ignore-iface-methods=isImplementedBy,deferred,extends,names,namesAndDescriptions,queryDescriptionFor,getBases,getDescriptionFor,getDoc,getName,getTaggedValue,getTaggedValueTags,isEqualOrExtendedBy,setTaggedValue,isImplementedByInstancesOf,adaptWith,is_implemented_by
+defining-attr-methods=__init__,__new__,setUp
+        </echo>
+        <exec executable="${venv.path}/bin/prospector" failonerror="false" taskname="prospector" output="${report.dir}/pylint.report">
+            <arg value="--full-pep8" />
+            <arg value="--zero-exit" />
+            <arg value="--output-format=pylint" />
+            <arg value="${work.dir}/" />
+            <arg value="--pylint-config-file=${pylint.rc}" />
+            <env key="LANG" value="uk_UA.UTF-8" />
+            <env key="LC_ALL" value="uk_UA.UTF-8" />
+            <env key="LC_CTYPE" value="uk_UA.UTF-8" />
+        </exec>
+        <delete file="${pylint.rc}" />
+    </target>
+    <target name="cloc">
+        <exec executable="cloc" failonerror="true" taskname="cloc">
+            <arg value="--xml" />
+            <arg value="--by-file-by-lang" />
+            <arg value="--out=${report.dir}/sloc.xml" />
+            <arg value="${work.dir}/${project.name}" />
+        </exec>
+    </target>
+    <target name="static_analysis">
+        <parallel threadCount="3">
+            <antcall target="pep8" />
+            <antcall target="cloc" />
+            <antcall target="prospector" />
+        </parallel>
+    </target>
+
+    <!-- ===================== testing ===================== -->
+    <target name="test.run">
+        <exec executable="${coverage.bin}" dir="${work.dir}">
+            <env key="path" value="${venv.path}:${path}" />
+            <env key="LANG" value="uk_UA.UTF-8" />
+            <env key="LC_ALL" value="uk_UA.UTF-8" />
+            <env key="LC_CTYPE" value="uk_UA.UTF-8" />
+            <arg value="run" />
+            <arg value="${work.dir}/clinicapp/manage.py" />
+            <arg value="test" />
+            <arg value="--noinput" />
+            <arg value="--testrunner=xmlrunner.extra.djangotestrunner.XMLTestRunner" />
+        </exec>
+        <move todir="${report.dir}">
+            <fileset dir="${work.dir}">
+                <include name="TEST-*.xml" />
+            </fileset>
+        </move>
+    </target>
+    <target name="test.coverage.xml">
+        <exec executable="${coverage.bin}" dir="${work.dir}">
+            <arg value="xml" />
+            <arg value="--include=${project.name}*" />
+            <arg value="-o" />
+            <arg value="${report.dir}/coverage.xml" />
+        </exec>
+    </target>
+    <target name="test.coverage.report">
+        <exec executable="${coverage.bin}" dir="${work.dir}">
+            <arg value="report" />
+            <arg value="--include=${project.name}*" />
+            <arg value="-m" />
+        </exec>
+    </target>
+    <target name="tests" 
+            depends="test.run,test.coverage.xml,test.coverage.report" />
+
+    <!-- ===================== interface ===================== -->
+    <target name="clean"
+            unless="clean.done"
+            description="Cleanup build artifacts">
+        <delete dir="${report.dir}"/>
+        <delete dir="${venv.path}" removeNotFollowedSymlinks="true" failonerror="false" />
+        <property name="clean.done" value="true"/>
+    </target>
+
+    <target name="prepare"
+            unless="prepare.done"
+            depends="clean"
+            description="Prepare for build">
+        <mkdir dir="${report.dir}"/>
+        <antcall target="pip" />
+        <property name="prepare.done" value="true"/>
+    </target>
+
+    <target name="build"
+            depends="prepare,static_analysis,tests"
+            description=""/>
+
+</project>

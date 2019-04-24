@@ -1,0 +1,53 @@
+version: '2'
+services:
+  postgresql:
+    image: mdillon/postgis:9.4-alpine
+    env_file: .env
+    volumes:
+      - ./tools/sql/create_test_db.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./var/postgresql/lib/:/var/lib/postgresql/
+      - ./var/postgresql/run/:/var/run/postgresql/
+    command: ["docker-entrypoint.sh", "postgres"]
+    ports:
+      - "15434:5432"
+
+  nginx:
+    image: nginx:1.10-alpine
+    links:
+      - project
+    depends_on:
+      - project
+    volumes:
+      - ./configs/nginx/docker-clinicapp.conf:/etc/nginx/conf.d/clinicapp.conf:ro
+      - ./configs/uwsgi/uwsgi_params:/etc/nginx/uwsgi_params:ro
+      - ./var/static/:/srv/www/ClinicApp/static/:ro
+      - ./var/media/:/srv/www/ClinicApp/media/:ro
+      - ./var/log/nginx:/var/log/nginx
+    ports:
+      - "10853:80"
+
+  redis:
+    image: redis:3-alpine
+    hostname: redis
+
+  project:
+    build: ./
+    env_file: .env
+    working_dir: /srv/www/ClinicApp/clinicapp
+    volumes:
+      - ./var/log/uwsgi:/var/log/uwsgi
+      - ./var/static/:/srv/www/ClinicApp/static/
+      - ./var/media/:/srv/www/ClinicApp/media/
+      - ./clinicapp/:/srv/www/ClinicApp/clinicapp/
+      - ./var/postgresql/run/:/var/run/postgresql/:ro
+      - ./var/log/:/srv/www/ClinicApp/var/log/
+      - ./clinicapp/clinicapp/settings/local-sample.py:/srv/www/ClinicApp/clinicapp/clinicapp/settings/local.py
+    command:
+      - /entrypoint.sh
+    ports:
+      - "10565:8000"
+    links:
+      - postgresql
+      - redis
+    depends_on:
+      - postgresql
